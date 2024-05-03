@@ -1,0 +1,98 @@
+# The Python Code in Raspberry Pi
+
+#!/usr/bin/env python3
+from picarx import Picarx
+import cv2
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import numpy as np
+import time
+import smbus
+import serial
+
+number_receive=0
+data_received=0
+adjusted_number=0
+ser = serial.Serial('/dev/ttyS0', 9600)
+x = 1024 / 255
+
+POWER = 1
+center = 700
+Kp = 0.05
+#Kp = 0.1
+Ki = 0.00001
+#Ki = 0.00001
+Kd = 0.00002
+#Kd = 0.00002
+Error = 0
+total_Err = 0
+last_Err = 0
+
+def readNumber():
+    global adjusted_number
+    if ser.in_waiting > 0:  # Check if there is data waiting to be read
+          received_byte = ser.read(1)
+          data_received = int.from_bytes(received_byte, byteorder='little')
+            # Decide whether to apply the coefficients based on the numbers received
+          if 10 <= data_received <= 255:
+            # If the number is in the range 10 to 255, multiply by the factor x
+              adjusted_number = data_received * x
+              print(f"Received number {data_received}, adjusted by factor x: {adjusted_number}")
+              return adjusted_number
+          else:
+            # If the number is in the range 0 to 9, do not multiply by the factor
+              #print(f"Received number: {data_received}")
+              adjusted_number=data_received
+              return adjusted_number
+              
+    return adjusted_number
+
+def PID(cx):
+    global total_Err, last_Err  # Declare total_Err and last_Err as global to modify the global variables
+    Error = center - cx
+    total_Err += Error
+    output = Kp * Error + Ki * total_Err + Kd * (Error - last_Err)
+    last_Err = Error
+    print(output)
+    return output
+
+px = Picarx()
+
+try:
+    
+    
+    while True:
+		
+        number_receive = readNumber()
+        print("Hey RPI, I received a digit ", number_receive)
+        if number_receive == 1:
+            px.forward(0) # stop
+            Error = 0
+            total_Err = 0
+            last_Err = 0
+            print("Human")
+        elif number_receive == 2:
+            px.forward(0) # stop
+            Error = 0
+            total_Err = 0
+            last_Err = 0
+            print("Road marking")
+        elif number_receive == 0:
+            px.forward(0) # stop
+            Error = 0
+            total_Err = 0
+            last_Err = 0
+            print("Nothing stop")
+        else: # Control the movemnt if the road is detected
+            px.forward(POWER)
+            output = PID(number_receive)
+            px.set_dir_servo_angle(-output)
+            #time.sleep(0.5)
+except Exception as e:
+    px.forward(0)
+    print(f"Encountered an error: {e}")
+finally:
+    print("Stopping the car...")
+    px.forward(0)
+    #px.stop()  # Ensure the car is stopped in case of an error
+    time.sleep(1)
